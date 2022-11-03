@@ -13,6 +13,8 @@ contract VaultTest is Test {
     Vault public vault;
 
     uint256 public constant DISTRIBUTION_AMOUNT = 10e18;
+    uint256 public constant SHAREHOLDER1_AMOUNT = 3e18;
+    uint256 public constant SHAREHOLDER2_AMOUNT = 7e18;
 
     address shareholder1 = vm.addr(1);
     address shareholder2 = vm.addr(2);
@@ -37,8 +39,8 @@ contract VaultTest is Test {
 
         successAddress = address(distribtionToken);
 
-        ownershipToken.mint(shareholder1, 3e18);
-        ownershipToken.mint(shareholder2, 7e18);
+        ownershipToken.mint(shareholder1, SHAREHOLDER1_AMOUNT);
+        ownershipToken.mint(shareholder2, SHAREHOLDER2_AMOUNT);
 
         ownershipToken.grantCheckpoint(address(vault));
         distribtionToken.approve(address(vault), 2**256 - 1);
@@ -113,6 +115,52 @@ contract VaultTest is Test {
             successTime,
             successAddress,
             successAmount
+        );
+
+        vm.expectRevert(bytes("Vault: Invalid dividend index"));
+        vault.claimDividend(dividendIndex + 1);
+
+        (, , , uint256 amount, , ) = vault.dividends(dividendIndex);
+        uint256 snapshotTotalSupply = ownershipToken.totalSupplyAt(
+            checkpointId
+        );
+
+        uint256 shareholder1Claim = (ownershipToken.balanceOfAt(
+            shareholder1,
+            checkpointId
+        ) * amount) / snapshotTotalSupply;
+        uint256 shareholder2Claim = (ownershipToken.balanceOfAt(
+            shareholder2,
+            checkpointId
+        ) * amount) / snapshotTotalSupply;
+
+        assertEq(distribtionToken.balanceOf(shareholder1), 0);
+        assertEq(distribtionToken.balanceOf(shareholder2), 0);
+        assertEq(distribtionToken.balanceOf(nonShareholder), 0);
+
+        vm.stopPrank();
+        vm.prank(shareholder1);
+        vault.claimDividend(dividendIndex);
+        assertEq(distribtionToken.balanceOf(shareholder1), shareholder1Claim);
+        assertEq(
+            distribtionToken.balanceOf(address(vault)),
+            DISTRIBUTION_AMOUNT - shareholder1Claim
+        );
+
+        vm.prank(shareholder1);
+        vm.expectRevert(bytes("Vault: Already claimed"));
+        vault.claimDividend(dividendIndex);
+
+        vm.prank(nonShareholder);
+        vault.claimDividend(dividendIndex);
+        assertEq(distribtionToken.balanceOf(nonShareholder), 0);
+
+        vm.prank(shareholder2);
+        vault.claimDividend(dividendIndex);
+        assertEq(distribtionToken.balanceOf(shareholder2), shareholder2Claim);
+        assertEq(
+            distribtionToken.balanceOf(address(vault)),
+            DISTRIBUTION_AMOUNT - shareholder1Claim - shareholder2Claim
         );
     }
 }

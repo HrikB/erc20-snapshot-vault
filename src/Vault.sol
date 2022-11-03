@@ -34,6 +34,7 @@ contract Vault is AccessControl {
     constructor(ClaimToken _claimToken) {
         claimToken = _claimToken;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DIVIDEND_ROLE, msg.sender);
     }
 
     function grantDividend(address _newAddress)
@@ -47,9 +48,15 @@ contract Vault is AccessControl {
         uint256 _expiry,
         address _token,
         uint256 _amount
-    ) public onlyRole(DIVIDEND_ROLE) {
+    ) public onlyRole(DIVIDEND_ROLE) returns (uint256, uint256) {
         uint256 checkpointId = claimToken.createCheckpoint();
-        _createDividend(checkpointId, _expiry, _token, _amount);
+        uint256 dividendIndex = _createDividend(
+            checkpointId,
+            _expiry,
+            _token,
+            _amount
+        );
+        return (checkpointId, dividendIndex);
     }
 
     function _createDividend(
@@ -57,7 +64,7 @@ contract Vault is AccessControl {
         uint256 _expiry,
         address _token,
         uint256 _amount
-    ) internal {
+    ) internal returns (uint256) {
         require(
             _expiry > block.timestamp,
             "Vault: Expiry must be in the future"
@@ -86,12 +93,22 @@ contract Vault is AccessControl {
             _amount,
             _expiry
         );
+
+        return dividendIndex;
     }
 
     function claimDividend(uint256 _dividendIndex) public {
         require(
             _dividendIndex < dividends.length,
             "Vault: Invalid dividend index"
+        );
+        require(
+            !dividends[_dividendIndex].reclaimed,
+            "Vault: Dividend already reclaimed"
+        );
+        require(
+            block.timestamp < dividends[_dividendIndex].expiry,
+            "Vault: Dividend expired"
         );
 
         Dividend storage dividend = dividends[_dividendIndex];
@@ -100,6 +117,27 @@ contract Vault is AccessControl {
             "Vault: Already claimed"
         );
         _payDividend(msg.sender, dividend, _dividendIndex);
+    }
+
+    function reclaimDividend(uint256 _dividendIndex)
+        external
+        onlyRole(DIVIDEND_ROLE)
+    {
+        require(
+            _dividendIndex < dividends.length,
+            "Vault: Invalid dividend index"
+        );
+        require(
+            block.timestamp >= dividends[_dividendIndex].expiry,
+            "Vault: Dividend not expired"
+        );
+        require(
+            !dividends[_dividendIndex].reclaimed,
+            "Vault: Dividend already reclaimed"
+        );
+        Dividend storage dividend = dividends[_dividendIndex];
+        dividend.reclaimed = true;
+        uint256 remainingAmount = dividend.amount - dividend.claimedAmount;
     }
 
     function _payDividend(
