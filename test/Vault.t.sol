@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 import {ERC20PresetFixedSupply} from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetFixedSupply.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../src/ClaimToken.sol";
 import "../src/Vault.sol";
@@ -162,5 +163,57 @@ contract VaultTest is Test {
             distribtionToken.balanceOf(address(vault)),
             DISTRIBUTION_AMOUNT - shareholder1Claim - shareholder2Claim
         );
+    }
+
+    function testDividendExpired() external {
+        (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
+            successTime,
+            successAddress,
+            successAmount
+        );
+
+        vm.warp(successTime);
+
+        vm.stopPrank();
+        vm.prank(shareholder1);
+        vm.expectRevert(bytes("Vault: Dividend expired"));
+        vault.claimDividend(dividendIndex);
+    }
+
+    function testDividendReclaim() external {
+        (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
+            successTime,
+            successAddress,
+            successAmount
+        );
+
+        vm.expectRevert(bytes("Vault: Invalid dividend index"));
+        vault.reclaimDividend(dividendIndex + 1);
+
+        vm.expectRevert(bytes("Vault: Dividend not expired"));
+        vault.reclaimDividend(dividendIndex);
+
+        vm.warp(successTime);
+
+        vault.reclaimDividend(dividendIndex);
+        assertEq(distribtionToken.balanceOf(address(vault)), 0);
+        assertEq(
+            distribtionToken.balanceOf(dividendCreator),
+            DISTRIBUTION_AMOUNT
+        );
+
+        vm.expectRevert(bytes("Vault: Dividend already reclaimed"));
+        vault.reclaimDividend(dividendIndex);
+
+        vm.stopPrank();
+        vm.prank(shareholder1);
+        vm.expectRevert(
+            abi.encodePacked(
+                "AccessControl: account ",
+                Strings.toHexString(shareholder1),
+                " is missing role 0x1306abaae01ce00b9f91c50a35fbeecbc60f12b86cc685e2cf1f6baae86d1793"
+            )
+        );
+        vault.reclaimDividend(dividendIndex);
     }
 }

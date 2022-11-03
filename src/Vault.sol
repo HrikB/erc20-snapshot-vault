@@ -138,6 +138,11 @@ contract Vault is AccessControl {
         Dividend storage dividend = dividends[_dividendIndex];
         dividend.reclaimed = true;
         uint256 remainingAmount = dividend.amount - dividend.claimedAmount;
+
+        IERC20(dividendTokens[_dividendIndex]).transfer(
+            msg.sender,
+            remainingAmount
+        );
     }
 
     function _payDividend(
