@@ -216,4 +216,10 @@ contract VaultTest is Test {
         );
         vault.reclaimDividend(dividendIndex);
     }
+
+    function testGrantDividend() external {
+        address addr = vm.addr(17);
+        vault.grantDividend(addr);
+        assertEq(vault.hasRole(keccak256("DIVIDEND_ROLE"), addr), true);
+    }
 }
