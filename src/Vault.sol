@@ -2,25 +2,12 @@
 pragma solidity ^0.8.13;
 
 import {ClaimToken} from "./ClaimToken.sol";
-import {Dividend} from "./VaultLib.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IVault} from "./IVault.sol";
+import {Dividend} from "./VaultLib.sol";
 
-contract Vault is AccessControl {
-    event DividendDeposit(
-        uint256 indexed checkpointId,
-        uint256 indexed dividendIndex,
-        address indexed token,
-        uint256 amount,
-        uint256 expiry
-    );
-    event ShareholderClaim(
-        address indexed shareholder,
-        uint256 indexed dividendIndex,
-        address indexed token,
-        uint256 amount
-    );
-
+contract Vault is AccessControl, IVault {
     ClaimToken claimToken;
 
     Dividend[] public dividends;
