@@ -31,31 +31,21 @@ contract Vault is AccessControl, IVault {
         _grantRole(DIVIDEND_ROLE, _newAddress);
     }
 
-    function createDividend(
-        uint256 _expiry,
-        address _token,
-        uint256 _amount
-    ) public onlyRole(DIVIDEND_ROLE) returns (uint256, uint256) {
+    function createDividend(address _token, uint256 _amount)
+        public
+        onlyRole(DIVIDEND_ROLE)
+        returns (uint256, uint256)
+    {
         uint256 checkpointId = claimToken.createCheckpoint();
-        uint256 dividendIndex = _createDividend(
-            checkpointId,
-            _expiry,
-            _token,
-            _amount
-        );
+        uint256 dividendIndex = _createDividend(checkpointId, _token, _amount);
         return (checkpointId, dividendIndex);
     }
 
     function _createDividend(
         uint256 _checkpointId,
-        uint256 _expiry,
         address _token,
         uint256 _amount
     ) internal returns (uint256) {
-        require(
-            _expiry > block.timestamp,
-            "Vault: Expiry must be in the future"
-        );
         require(_amount > 0, "Vault: Amount must be greater than 0");
         require(_token != address(0), "Vault: Token must be valid address");
         require(
@@ -63,23 +53,17 @@ contract Vault is AccessControl, IVault {
             "Vault: Checkpoint must be valid"
         );
 
-        // Transfer total dividend value to vault for distribution
+        // Check balances instead
         IERC20(_token).transferFrom(msg.sender, address(this), _amount);
 
         uint256 dividendIndex = dividends.length;
 
         dividends.push(
-            Dividend(_checkpointId, block.timestamp, _expiry, _amount, 0, false)
+            Dividend(_checkpointId, block.timestamp, _amount, 0, false)
         );
         dividendTokens[dividendIndex] = _token;
 
-        emit DividendDeposit(
-            _checkpointId,
-            dividendIndex,
-            _token,
-            _amount,
-            _expiry
-        );
+        emit DividendDeposit(_checkpointId, dividendIndex, _token, _amount);
 
         return dividendIndex;
     }
@@ -93,10 +77,6 @@ contract Vault is AccessControl, IVault {
             !dividends[_dividendIndex].reclaimed,
             "Vault: Dividend already reclaimed"
         );
-        require(
-            block.timestamp < dividends[_dividendIndex].expiry,
-            "Vault: Dividend expired"
-        );
 
         Dividend storage dividend = dividends[_dividendIndex];
         require(
@@ -104,32 +84,6 @@ contract Vault is AccessControl, IVault {
             "Vault: Already claimed"
         );
         _payDividend(msg.sender, dividend, _dividendIndex);
-    }
-
-    function reclaimDividend(uint256 _dividendIndex)
-        external
-        onlyRole(DIVIDEND_ROLE)
-    {
-        require(
-            _dividendIndex < dividends.length,
-            "Vault: Invalid dividend index"
-        );
-        require(
-            block.timestamp >= dividends[_dividendIndex].expiry,
-            "Vault: Dividend not expired"
-        );
-        require(
-            !dividends[_dividendIndex].reclaimed,
-            "Vault: Dividend already reclaimed"
-        );
-        Dividend storage dividend = dividends[_dividendIndex];
-        dividend.reclaimed = true;
-        uint256 remainingAmount = dividend.amount - dividend.claimedAmount;
-
-        IERC20(dividendTokens[_dividendIndex]).transfer(
-            msg.sender,
-            remainingAmount
-        );
     }
 
     function _payDividend(

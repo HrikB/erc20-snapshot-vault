@@ -6,8 +6,7 @@ interface IVault {
         uint256 indexed checkpointId,
         uint256 indexed dividendIndex,
         address indexed token,
-        uint256 amount,
-        uint256 expiry
+        uint256 amount
     );
     event ShareholderClaim(
         address indexed shareholder,
@@ -18,15 +17,11 @@ interface IVault {
 
     function grantDividend(address _newAddress) external;
 
-    function createDividend(
-        uint256 _expiry,
-        address _token,
-        uint256 _amount
-    ) external returns (uint256, uint256);
+    function createDividend(address _token, uint256 _amount)
+        external
+        returns (uint256, uint256);
 
     function claimDividend(uint256 _dividendIndex) external;
-
-    function reclaimDividend(uint256 _dividendIndex) external;
 
     function calculateDividend(uint256 _dividendIndex, address _shareholder)
         external
