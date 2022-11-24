@@ -1,16 +1,27 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {ClaimToken} from "./ClaimToken.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
+import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
+
+import {ClaimToken} from "./ClaimToken.sol";
 import {IVault} from "./IVault.sol";
-import {Dividend} from "./VaultLib.sol";
+import {DividendSnapshots} from "./VaultLib.sol";
+
+import "forge-std/console.sol";
 
 contract Vault is AccessControl, IVault {
-    ClaimToken claimToken;
+    using Arrays for uint256[];
+    using Counters for Counters.Counter;
 
-    Dividend[] public dividends;
+    ClaimToken claimToken;
+    ERC20 distributionToken;
+
+    DividendSnapshots dividendSnapshots;
+    uint256 public totalDividendsClaimed;
+    Counters.Counter public _currentDividendId;
 
     mapping(uint256 => address) public dividendTokens;
     // CheckpointId => Shareholder address => claim bool
@@ -18,8 +29,9 @@ contract Vault is AccessControl, IVault {
 
     bytes32 internal constant DIVIDEND_ROLE = keccak256("DIVIDEND_ROLE");
 
-    constructor(ClaimToken _claimToken) {
+    constructor(ClaimToken _claimToken, address _distributionToken) {
         claimToken = _claimToken;
+        distributionToken = ERC20(_distributionToken);
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(DIVIDEND_ROLE, msg.sender);
     }
@@ -31,104 +43,102 @@ contract Vault is AccessControl, IVault {
         _grantRole(DIVIDEND_ROLE, _newAddress);
     }
 
-    function createDividend(address _token, uint256 _amount)
+    function createDividend()
         public
         onlyRole(DIVIDEND_ROLE)
         returns (uint256, uint256)
     {
-        uint256 checkpointId = claimToken.createCheckpoint();
-        uint256 dividendIndex = _createDividend(checkpointId, _token, _amount);
-        return (checkpointId, dividendIndex);
+        _currentDividendId.increment();
+
+        uint256 currentId = getCurrentDividendId();
+
+        uint256 tokenCheckpointId = claimToken.createCheckpoint();
+        dividendSnapshots.ids.push(currentId);
+        dividendSnapshots.checkpoints.push(tokenCheckpointId);
+        dividendSnapshots.values.push(
+            totalDividendsClaimed + distributionToken.balanceOf(address(this))
+        );
+        return (tokenCheckpointId, currentId);
     }
 
-    function _createDividend(
-        uint256 _checkpointId,
-        address _token,
-        uint256 _amount
-    ) internal returns (uint256) {
-        require(_amount > 0, "Vault: Amount must be greater than 0");
-        require(_token != address(0), "Vault: Token must be valid address");
-        require(
-            _checkpointId <= claimToken.getCurrentCheckpointId(),
-            "Vault: Checkpoint must be valid"
-        );
-
-        // Check balances instead
-        IERC20(_token).transferFrom(msg.sender, address(this), _amount);
-
-        uint256 dividendIndex = dividends.length;
-
-        dividends.push(
-            Dividend(_checkpointId, block.timestamp, _amount, 0, false)
-        );
-        dividendTokens[dividendIndex] = _token;
-
-        emit DividendDeposit(_checkpointId, dividendIndex, _token, _amount);
-
-        return dividendIndex;
+    function getCurrentDividendId() public returns (uint256) {
+        return _currentDividendId.current();
     }
 
-    function claimDividend(uint256 _dividendIndex) public {
-        require(
-            _dividendIndex < dividends.length,
-            "Vault: Invalid dividend index"
-        );
-        require(
-            !dividends[_dividendIndex].reclaimed,
-            "Vault: Dividend already reclaimed"
-        );
+    function dividendAmountAt(uint256 _dividendId)
+        public
+        view
+        returns (uint256)
+    {
+        (bool snapshotted, uint256 currValue) = _valueAt(_dividendId);
+        (, uint256 prevValue) = _dividendId == 1
+            ? (false, 0)
+            : _valueAt(_dividendId - 1);
 
-        Dividend storage dividend = dividends[_dividendIndex];
+        return
+            snapshotted
+                ? currValue - prevValue
+                : totalDividendsClaimed +
+                    distributionToken.balanceOf(address(this)) -
+                    prevValue;
+    }
+
+    function _valueAt(uint256 _dividendId)
+        private
+        view
+        returns (bool, uint256)
+    {
+        require(_dividendId > 0, "ERC20Snapshot: id is 0");
+        // require(
+        //     _dividendId <= getCurrentDividendId(),
+        //     "ERC20Snapshot: nonexistent id"
+        // );
+
+        uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
+
+        if (index == dividendSnapshots.ids.length) return (false, 0);
+        else return (true, dividendSnapshots.values[index]);
+    }
+
+    function claimDividend(uint256 _dividendId) public {
         require(
-            !tokensClaimed[dividend.checkpointId][msg.sender],
+            !tokensClaimed[_dividendId][msg.sender],
             "Vault: Already claimed"
         );
-        _payDividend(msg.sender, dividend, _dividendIndex);
+        _payDividend(msg.sender, _dividendId);
     }
 
-    function _payDividend(
-        address _shareholder,
-        Dividend storage _dividend,
-        uint256 _dividendIndex
-    ) internal {
-        uint256 claim = calculateDividend(_dividendIndex, _shareholder);
-        tokensClaimed[_dividend.checkpointId][_shareholder] = true;
-        _dividend.claimedAmount = claim + _dividend.claimedAmount;
-
-        IERC20(dividendTokens[_dividendIndex]).transfer(_shareholder, claim);
-
+    function _payDividend(address _shareholder, uint256 _dividendId) internal {
+        uint256 claim = calculateDividend(_dividendId, _shareholder);
+        tokensClaimed[_dividendId][_shareholder] = true;
+        totalDividendsClaimed += claim;
+        ERC20(dividendTokens[_dividendId]).transfer(_shareholder, claim);
         emit ShareholderClaim(
             _shareholder,
-            _dividendIndex,
-            dividendTokens[_dividendIndex],
+            _dividendId,
+            dividendTokens[_dividendId],
             claim
         );
     }
 
-    function calculateDividend(uint256 _dividendIndex, address _shareholder)
+    function calculateDividend(uint256 _dividendId, address _shareholder)
         public
         view
         returns (uint256)
     {
         require(
-            _dividendIndex < dividends.length,
+            _dividendId < dividendSnapshots.ids.length,
             "Vault: Invalid dividend index"
         );
+        if (tokensClaimed[_dividendId][_shareholder]) return 0;
 
-        Dividend storage dividend = dividends[_dividendIndex];
-        if (tokensClaimed[dividend.checkpointId][_shareholder]) return 0;
+        uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
 
-        uint256 snapshotBalance = claimToken.balanceOfAt(
-            _shareholder,
-            dividend.checkpointId
-        );
+        uint256 snapshotBalance = claimToken.balanceOfAt(_shareholder, index);
         // Potentially storing this value in Dividend struct could save gas
-        uint256 snapshotTotalSupply = claimToken.totalSupplyAt(
-            dividend.checkpointId
-        );
-        uint256 claimBalance = (snapshotBalance * dividend.amount) /
-            snapshotTotalSupply;
-
+        uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
+        uint256 claimBalance = (snapshotBalance *
+            dividendAmountAt(_dividendId)) / snapshotTotalSupply;
         return claimBalance;
     }
 }

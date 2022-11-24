@@ -17,9 +17,7 @@ interface IVault {
 
     function grantDividend(address _newAddress) external;
 
-    function createDividend(address _token, uint256 _amount)
-        external
-        returns (uint256, uint256);
+    function createDividend() external returns (uint256, uint256);
 
     function claimDividend(uint256 _dividendIndex) external;
 

@@ -1,225 +1,139 @@
-// // SPDX-License-Identifier: UNLICENSED
-// pragma solidity ^0.8.13;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
 
-// import "forge-std/Test.sol";
-// import {ERC20PresetFixedSupply} from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetFixedSupply.sol";
-// import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import "forge-std/Test.sol";
+import {ERC20PresetFixedSupply} from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetFixedSupply.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-// import "../src/ClaimToken.sol";
-// import "../src/Vault.sol";
+import "../src/ClaimToken.sol";
+import "../src/Vault.sol";
 
-// contract VaultTest is Test {
-//     ClaimToken public ownershipToken;
-//     ERC20PresetFixedSupply public distribtionToken;
-//     Vault public vault;
+contract VaultTest is Test {
+    ClaimToken public ownershipToken;
+    ERC20PresetFixedSupply public distributionToken;
+    Vault public vault;
 
-//     uint256 public constant DISTRIBUTION_AMOUNT = 10e18;
-//     uint256 public constant SHAREHOLDER1_AMOUNT = 3e18;
-//     uint256 public constant SHAREHOLDER2_AMOUNT = 7e18;
+    uint256 public constant DISTRIBUTION_AMOUNT = 10e18;
+    uint256 public constant SHAREHOLDER1_AMOUNT = 3e18;
+    uint256 public constant SHAREHOLDER2_AMOUNT = 7e18;
 
-//     address shareholder1 = vm.addr(1);
-//     address shareholder2 = vm.addr(2);
-//     address nonShareholder = vm.addr(3);
-//     address dividendCreator = vm.addr(4);
+    address shareholder1 = vm.addr(1);
+    address shareholder2 = vm.addr(2);
+    address nonShareholder = vm.addr(3);
+    address dividendCreator = vm.addr(4);
 
-//     uint256 successTime = block.timestamp + 30 * 24 * 3600;
-//     uint256 successAmount = DISTRIBUTION_AMOUNT;
-//     address successAddress;
+    uint256 successTime = block.timestamp + 30 * 24 * 3600;
+    uint256 successAmount = DISTRIBUTION_AMOUNT;
+    address successAddress;
 
-//     function setUp() external {
-//         vm.startPrank(dividendCreator);
+    function setUp() external {
+        vm.startPrank(dividendCreator);
 
-//         ownershipToken = new ClaimToken("Claim", "CLM");
-//         distribtionToken = new ERC20PresetFixedSupply(
-//             "Distribution",
-//             "DSTR",
-//             DISTRIBUTION_AMOUNT,
-//             dividendCreator
-//         );
-//         vault = new Vault(ownershipToken);
+        ownershipToken = new ClaimToken("Claim", "CLM");
+        distributionToken = new ERC20PresetFixedSupply(
+            "Distribution",
+            "DSTR",
+            DISTRIBUTION_AMOUNT,
+            dividendCreator
+        );
+        vault = new Vault(ownershipToken, address(distributionToken));
 
-//         successAddress = address(distribtionToken);
+        ownershipToken.mint(shareholder1, SHAREHOLDER1_AMOUNT);
+        ownershipToken.mint(shareholder2, SHAREHOLDER2_AMOUNT);
 
-//         ownershipToken.mint(shareholder1, SHAREHOLDER1_AMOUNT);
-//         ownershipToken.mint(shareholder2, SHAREHOLDER2_AMOUNT);
+        ownershipToken.grantCheckpoint(address(vault));
+        distributionToken.approve(address(vault), 2**256 - 1);
 
-//         ownershipToken.grantCheckpoint(address(vault));
-//         distribtionToken.approve(address(vault), 2**256 - 1);
+        vm.label(shareholder1, "SHAREHOLDER1");
+        vm.label(shareholder2, "SHAREHOLDER2");
+        vm.label(dividendCreator, "DIVIDEND_CREATOR");
+        vm.label(address(distributionToken), "DISTRIBUTION_TOKEN");
+        vm.label(address(ownershipToken), "OWNERSHIP_TOKEN");
+        vm.label(address(vault), "VAULT");
+    }
 
-//         vm.label(shareholder1, "SHAREHOLDER1");
-//         vm.label(shareholder2, "SHAREHOLDER2");
-//         vm.label(dividendCreator, "DIVIDEND_CREATOR");
-//         vm.label(address(distribtionToken), "DISTRIBUTION_TOKEN");
-//         vm.label(address(ownershipToken), "OWNERSHIP_TOKEN");
-//         vm.label(address(vault), "VAULT");
-//     }
+    function testCreateDividend() external {
+        distributionToken.transfer(address(vault), 1000);
+        (, uint256 dividendIndex1) = vault.createDividend();
+        assertEq(dividendIndex1, 1, "dividendIndex1");
+        assertEq(vault.dividendAmountAt(dividendIndex1), 1000);
 
-//     function testCheckpointCreation() external {
-//         uint256 prevSnapshotId = ownershipToken.getCurrentCheckpointId();
-//         uint256 prevDistributorBalance = distribtionToken.balanceOf(
-//             dividendCreator
-//         );
-//         uint256 prevVaultBalance = distribtionToken.balanceOf(address(vault));
+        distributionToken.transfer(address(vault), 2000);
+        (, uint256 dividendIndex2) = vault.createDividend();
+        assertEq(dividendIndex2, 2, "dividendIndex2");
+        assertEq(vault.dividendAmountAt(dividendIndex2), 2000);
 
-//         assertEq(prevDistributorBalance, DISTRIBUTION_AMOUNT);
-//         assertEq(prevVaultBalance, 0);
+        distributionToken.transfer(address(vault), 5000);
+        (, uint256 dividendIndex3) = vault.createDividend();
+        assertEq(dividendIndex3, 3, "dividendIndex3");
+        assertEq(vault.dividendAmountAt(dividendIndex3), 5000);
 
-//         uint256 failTime = block.timestamp - 1;
-//         uint256 failAmount = 0;
-//         address failAddress = address(0);
+        distributionToken.transfer(address(vault), 2500);
+        assertEq(vault.dividendAmountAt(dividendIndex3 + 1), 2500);
+    }
 
-//         vm.expectRevert(bytes("Vault: Expiry must be in the future"));
-//         vault.createDividend(failTime, successAddress, successAmount);
-//         vm.expectRevert(bytes("Vault: Amount must be greater than 0"));
-//         vault.createDividend(successTime, successAddress, failAmount);
-//         vm.expectRevert(bytes("Vault: Token must be valid address"));
-//         vault.createDividend(successTime, failAddress, successAmount);
+    function testDividendClaim() external {
+        distributionToken.transfer(address(vault), 1000);
+        (, uint256 dividendIndex1) = vault.createDividend();
 
-//         (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
-//             successTime,
-//             successAddress,
-//             successAmount
-//         );
+        distributionToken.transfer(address(vault), 2000);
+        (, uint256 dividendIndex2) = vault.createDividend();
 
-//         uint256 currentSnapshotId = ownershipToken.getCurrentCheckpointId();
-//         uint256 postDistributorBalance = distribtionToken.balanceOf(
-//             dividendCreator
-//         );
-//         uint256 postVaultBalance = distribtionToken.balanceOf(address(vault));
+        distributionToken.transfer(address(vault), 5000);
+        (, uint256 dividendIndex3) = vault.createDividend();
 
-//         assertEq(currentSnapshotId, checkpointId);
-//         assertEq(prevSnapshotId + 1, currentSnapshotId);
+        distributionToken.transfer(address(vault), 2500);
 
-//         assertEq(postDistributorBalance, 0);
-//         assertEq(postVaultBalance, DISTRIBUTION_AMOUNT);
+        vm.expectRevert(bytes("Vault: Invalid dividend index"));
+        vault.claimDividend(dividendIndex3 + 1);
 
-//         // Test Dividend creation
-//         (
-//             uint256 checkpointIdDiv,
-//             uint256 created,
-//             uint256 expiry,
-//             uint256 amount,
-//             uint256 claimedAmount,
-//             bool reclaimed
-//         ) = vault.dividends(dividendIndex);
+        // (, , , uint256 amount, , ) = vault.dividends(dividendIndex);
+        // uint256 snapshotTotalSupply = ownershipToken.totalSupplyAt(
+        //     checkpointId
+        // );
 
-//         assertEq(checkpointIdDiv, checkpointId);
-//         assertEq(created, block.timestamp);
-//         assertEq(expiry, successTime);
-//         assertEq(amount, successAmount);
-//         assertEq(claimedAmount, 0);
-//         assertEq(reclaimed, false);
-//     }
+        // uint256 shareholder1Claim = (ownershipToken.balanceOfAt(
+        //     shareholder1,
+        //     checkpointId
+        // ) * amount) / snapshotTotalSupply;
+        // uint256 shareholder2Claim = (ownershipToken.balanceOfAt(
+        //     shareholder2,
+        //     checkpointId
+        // ) * amount) / snapshotTotalSupply;
 
-//     function testDividendClaim() external {
-//         (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
-//             successTime,
-//             successAddress,
-//             successAmount
-//         );
+        // assertEq(distributionToken.balanceOf(shareholder1), 0);
+        // assertEq(distributionToken.balanceOf(shareholder2), 0);
+        // assertEq(distributionToken.balanceOf(nonShareholder), 0);
 
-//         vm.expectRevert(bytes("Vault: Invalid dividend index"));
-//         vault.claimDividend(dividendIndex + 1);
+        // vm.stopPrank();
+        // vm.prank(shareholder1);
+        // vault.claimDividend(dividendIndex);
+        // assertEq(distributionToken.balanceOf(shareholder1), shareholder1Claim);
+        // assertEq(
+        //     distributionToken.balanceOf(address(vault)),
+        //     DISTRIBUTION_AMOUNT - shareholder1Claim
+        // );
 
-//         (, , , uint256 amount, , ) = vault.dividends(dividendIndex);
-//         uint256 snapshotTotalSupply = ownershipToken.totalSupplyAt(
-//             checkpointId
-//         );
+        // vm.prank(shareholder1);
+        // vm.expectRevert(bytes("Vault: Already claimed"));
+        // vault.claimDividend(dividendIndex);
 
-//         uint256 shareholder1Claim = (ownershipToken.balanceOfAt(
-//             shareholder1,
-//             checkpointId
-//         ) * amount) / snapshotTotalSupply;
-//         uint256 shareholder2Claim = (ownershipToken.balanceOfAt(
-//             shareholder2,
-//             checkpointId
-//         ) * amount) / snapshotTotalSupply;
+        // vm.prank(nonShareholder);
+        // vault.claimDividend(dividendIndex);
+        // assertEq(distributionToken.balanceOf(nonShareholder), 0);
 
-//         assertEq(distribtionToken.balanceOf(shareholder1), 0);
-//         assertEq(distribtionToken.balanceOf(shareholder2), 0);
-//         assertEq(distribtionToken.balanceOf(nonShareholder), 0);
+        // vm.prank(shareholder2);
+        // vault.claimDividend(dividendIndex);
+        // assertEq(distributionToken.balanceOf(shareholder2), shareholder2Claim);
+        // assertEq(
+        //     distributionToken.balanceOf(address(vault)),
+        //     DISTRIBUTION_AMOUNT - shareholder1Claim - shareholder2Claim
+        // );
+    }
 
-//         vm.stopPrank();
-//         vm.prank(shareholder1);
-//         vault.claimDividend(dividendIndex);
-//         assertEq(distribtionToken.balanceOf(shareholder1), shareholder1Claim);
-//         assertEq(
-//             distribtionToken.balanceOf(address(vault)),
-//             DISTRIBUTION_AMOUNT - shareholder1Claim
-//         );
-
-//         vm.prank(shareholder1);
-//         vm.expectRevert(bytes("Vault: Already claimed"));
-//         vault.claimDividend(dividendIndex);
-
-//         vm.prank(nonShareholder);
-//         vault.claimDividend(dividendIndex);
-//         assertEq(distribtionToken.balanceOf(nonShareholder), 0);
-
-//         vm.prank(shareholder2);
-//         vault.claimDividend(dividendIndex);
-//         assertEq(distribtionToken.balanceOf(shareholder2), shareholder2Claim);
-//         assertEq(
-//             distribtionToken.balanceOf(address(vault)),
-//             DISTRIBUTION_AMOUNT - shareholder1Claim - shareholder2Claim
-//         );
-//     }
-
-//     function testDividendExpired() external {
-//         (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
-//             successTime,
-//             successAddress,
-//             successAmount
-//         );
-
-//         vm.warp(successTime);
-
-//         vm.stopPrank();
-//         vm.prank(shareholder1);
-//         vm.expectRevert(bytes("Vault: Dividend expired"));
-//         vault.claimDividend(dividendIndex);
-//     }
-
-//     function testDividendReclaim() external {
-//         (uint256 checkpointId, uint256 dividendIndex) = vault.createDividend(
-//             successTime,
-//             successAddress,
-//             successAmount
-//         );
-
-//         vm.expectRevert(bytes("Vault: Invalid dividend index"));
-//         vault.reclaimDividend(dividendIndex + 1);
-
-//         vm.expectRevert(bytes("Vault: Dividend not expired"));
-//         vault.reclaimDividend(dividendIndex);
-
-//         vm.warp(successTime);
-
-//         vault.reclaimDividend(dividendIndex);
-//         assertEq(distribtionToken.balanceOf(address(vault)), 0);
-//         assertEq(
-//             distribtionToken.balanceOf(dividendCreator),
-//             DISTRIBUTION_AMOUNT
-//         );
-
-//         vm.expectRevert(bytes("Vault: Dividend already reclaimed"));
-//         vault.reclaimDividend(dividendIndex);
-
-//         vm.stopPrank();
-//         vm.prank(shareholder1);
-//         vm.expectRevert(
-//             abi.encodePacked(
-//                 "AccessControl: account ",
-//                 Strings.toHexString(shareholder1),
-//                 " is missing role 0x1306abaae01ce00b9f91c50a35fbeecbc60f12b86cc685e2cf1f6baae86d1793"
-//             )
-//         );
-//         vault.reclaimDividend(dividendIndex);
-//     }
-
-//     function testGrantDividend() external {
-//         address addr = vm.addr(17);
-//         vault.grantDividend(addr);
-//         assertEq(vault.hasRole(keccak256("DIVIDEND_ROLE"), addr), true);
-//     }
-// }
+    function testGrantDividend() external {
+        address addr = vm.addr(17);
+        vault.grantDividend(addr);
+        assertEq(vault.hasRole(keccak256("DIVIDEND_ROLE"), addr), true);
+    }
+}
