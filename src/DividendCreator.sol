@@ -10,7 +10,7 @@ contract DividendCreator {
     uint256 lastTime;
 
     constructor(Vault _vault, uint256 _rateLimit) {
-        vault = _vault;
+        // vault = _vault;
         rateLimit = _rateLimit;
     }
 
@@ -20,6 +20,6 @@ contract DividendCreator {
             "DividendCreator: Rate limit exceeded"
         );
         lastTime = block.timestamp;
-        vault.createDividend();
+        // vault.createDividend();
     }
 }
