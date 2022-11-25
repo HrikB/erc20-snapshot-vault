@@ -28,7 +28,6 @@ contract Vault is IVault {
     uint256 immutable _rateLimit;
     uint256 lastTime;
 
-    mapping(uint256 => address) public dividendTokens;
     // CheckpointId => Shareholder address => claim bool
     mapping(uint256 => mapping(address => bool)) public tokensClaimed;
 
@@ -51,7 +50,7 @@ contract Vault is IVault {
             distributionTokens.set(i, _distributionTokens[i]);
 
         dividendSnapshots.values = new uint256[][](_distributionTokens.length);
-        console.log(dividendSnapshots.values.length);
+        totalDividendsClaimed = new uint256[](_distributionTokens.length);
 
         _rateLimit = rateLimit_;
     }
@@ -87,7 +86,7 @@ contract Vault is IVault {
             _dividendId
         );
         (, uint256[] memory prevValues) = _dividendId == 1
-            ? (false, new uint256[](0))
+            ? (false, new uint256[](currValues.length))
             : _valuesAt(_dividendId - 1);
 
         if (snapshotted) {
@@ -111,20 +110,21 @@ contract Vault is IVault {
         view
         returns (bool, uint256[] memory)
     {
-        require(_dividendId > 0, "ERC20Snapshot: id is 0");
+        require(_dividendId > 0, "Vault: id is 0");
         require(
-            _dividendId <= getCurrentDividendId(),
-            "ERC20Snapshot: nonexistent id"
+            _dividendId <= getCurrentDividendId() + 1,
+            "Vault: nonexistent id"
         );
 
         uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
 
         uint256[] memory valuesArr = new uint256[](distributionTokens.length());
+        if (index == dividendSnapshots.ids.length) return (false, valuesArr);
+
         for (uint256 i = 0; i < valuesArr.length; i++)
             valuesArr[i] = dividendSnapshots.values[i][index];
 
-        if (index == dividendSnapshots.ids.length) return (false, valuesArr);
-        else return (true, valuesArr);
+        return (true, valuesArr);
     }
 
     function claimDividend(uint256 _dividendId) public {
