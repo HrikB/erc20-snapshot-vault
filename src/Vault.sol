@@ -77,56 +77,6 @@ contract Vault is IVault {
         return _currentDividendId.current();
     }
 
-    function dividendAmountsAt(uint256 _dividendId)
-        public
-        view
-        returns (uint256[] memory)
-    {
-        (bool snapshotted, uint256[] memory currValues) = _valuesAt(
-            _dividendId
-        );
-        (, uint256[] memory prevValues) = _dividendId == 1
-            ? (false, new uint256[](currValues.length))
-            : _valuesAt(_dividendId - 1);
-
-        if (snapshotted) {
-            for (uint256 i = 0; i < currValues.length; i++) {
-                currValues[i] -= prevValues[i];
-            }
-            return currValues;
-        }
-
-        for (uint256 i = 0; i < prevValues.length; i++) {
-            prevValues[i] =
-                totalDividendsClaimed[i] +
-                ERC20(distributionTokens.get(i)).balanceOf(address(this)) -
-                prevValues[i];
-        }
-        return prevValues;
-    }
-
-    function _valuesAt(uint256 _dividendId)
-        private
-        view
-        returns (bool, uint256[] memory)
-    {
-        require(_dividendId > 0, "Vault: id is 0");
-        require(
-            _dividendId <= getCurrentDividendId() + 1,
-            "Vault: nonexistent id"
-        );
-
-        uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
-
-        uint256[] memory valuesArr = new uint256[](distributionTokens.length());
-        if (index == dividendSnapshots.ids.length) return (false, valuesArr);
-
-        for (uint256 i = 0; i < valuesArr.length; i++)
-            valuesArr[i] = dividendSnapshots.values[i][index];
-
-        return (true, valuesArr);
-    }
-
     function claimDividend(uint256 _dividendId) public {
         require(
             !tokensClaimed[_dividendId][msg.sender],
@@ -136,14 +86,26 @@ contract Vault is IVault {
     }
 
     function _payDividend(address _shareholder, uint256 _dividendId) internal {
-        uint256[] memory claims = calculateDividend(_dividendId, _shareholder);
-        tokensClaimed[_dividendId][_shareholder] = true;
+        require(
+            _dividendId > 0 && _dividendId <= dividendSnapshots.ids.length,
+            "Vault: Invalid dividend index"
+        );
+        uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
+        uint256 snapshotBalance = claimToken.balanceOfAt(
+            _shareholder,
+            dividendSnapshots.checkpoints[index]
+        );
+        uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
 
-        // This for loop is uneccesary since transfers can be done in the same
-        // loop as calculations (from within calcualteDividend())
-        for (uint256 i = 0; i < claims.length; i++) {
+        for (uint256 i = 0; i < distributionTokens.length(); i++) {
+            uint256 claimAmount = _calculateClaimHelper(
+                snapshotBalance,
+                snapshotTotalSupply,
+                _dividendId,
+                i
+            );
+
             address token = distributionTokens.get(i);
-            uint256 claimAmount = claims[i];
 
             totalDividendsClaimed[i] += claimAmount;
             ERC20(token).transfer(_shareholder, claimAmount);
@@ -154,22 +116,21 @@ contract Vault is IVault {
                 claimAmount
             );
         }
+
+        // No reentrancy vunerability with ERC20
+        tokensClaimed[_dividendId][_shareholder] = true;
     }
 
-    // Can probably removed since running for loop here and another for loop
-    // during transfer doesn't make sense (extra gas cost). Just calculate and
-    // transfer in the same loop.
-    function calculateDividend(uint256 _dividendId, address _shareholder)
-        public
-        view
-        returns (uint256[] memory)
-    {
+    function calculateClaim(
+        address _shareholder,
+        uint256 _dividendId,
+        uint256 tokenIndex
+    ) public view returns (uint256) {
         require(
             _dividendId > 0 && _dividendId <= dividendSnapshots.ids.length,
             "Vault: Invalid dividend index"
         );
-        if (tokensClaimed[_dividendId][_shareholder])
-            return new uint256[](distributionTokens.length());
+        if (tokensClaimed[_dividendId][_shareholder]) return 0;
 
         uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
 
@@ -179,11 +140,66 @@ contract Vault is IVault {
         );
         // Potentially storing this value in Dividend struct could save gas
         uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
+        return
+            _calculateClaimHelper(
+                snapshotBalance,
+                snapshotTotalSupply,
+                _dividendId,
+                tokenIndex
+            );
+    }
 
-        uint256[] memory claims = dividendAmountsAt(_dividendId);
-        for (uint256 i = 0; i < claims.length; i++)
-            claims[i] = (snapshotBalance * claims[i]) / snapshotTotalSupply;
+    function _calculateClaimHelper(
+        uint256 snapshotBalance,
+        uint256 snapshotTotalSupply,
+        uint256 _dividendId,
+        uint256 tokenIndex
+    ) private view returns (uint256) {
+        return
+            (snapshotBalance * dividendAmountAt(_dividendId, tokenIndex)) /
+            snapshotTotalSupply;
+    }
 
-        return claims;
+    function dividendAmountAt(uint256 _dividendId, uint256 tokenIndex)
+        public
+        view
+        returns (uint256)
+    {
+        (bool snapshotted, uint256 currValue) = _valueAt(
+            _dividendId,
+            tokenIndex
+        );
+        (, uint256 prevValue) = _dividendId == 1
+            ? (false, 0)
+            : _valueAt(_dividendId - 1, tokenIndex);
+
+        if (snapshotted) return currValue - prevValue;
+
+        return
+            totalDividendsClaimed[tokenIndex] +
+            ERC20(distributionTokens.get(tokenIndex)).balanceOf(address(this)) -
+            prevValue;
+    }
+
+    function _valueAt(uint256 _dividendId, uint256 tokenIndex)
+        private
+        view
+        returns (bool, uint256)
+    {
+        require(
+            tokenIndex < distributionTokens.length(),
+            "Vault: Invalid token"
+        );
+        require(_dividendId > 0, "Vault: id is 0");
+        require(
+            _dividendId <= getCurrentDividendId() + 1,
+            "Vault: nonexistent id"
+        );
+
+        uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
+
+        if (index == dividendSnapshots.ids.length) return (false, 0);
+
+        return (true, dividendSnapshots.values[tokenIndex][index]);
     }
 }
