@@ -195,10 +195,13 @@ contract VaultTest is Test {
         vaultMultiple.dividendAmountAt(dividendId3 + 2, 0);
     }
 
-    function testClaimXDividend() external {
+    function testClaimDividend() external {
         distributionToken1.transfer(address(vaultSingle), dt1Amount1);
         (, uint256 dividendId1) = vaultSingle.createDividend();
         distributionToken1.transfer(address(vaultSingle), dt1Amount2);
+
+        vm.expectRevert(bytes("Vault: Rate limit exceeded"));
+        vaultSingle.createDividend();
         vm.warp(block.timestamp + 1);
         (, uint256 dividendId2) = vaultSingle.createDividend();
 
@@ -218,10 +221,39 @@ contract VaultTest is Test {
         uint256 s2Claim2Amount = (SHAREHOLDER2_AMOUNT * dt1Amount2) /
             DISTRIBUTION_AMOUNT;
 
+        // Test calculateClaim()
+        vm.expectRevert(bytes("Vault: Invalid dividend index"));
+        vaultMultiple.calculateClaim(shareholder1, dividendId1, 3);
+
+        assertEq(
+            vaultSingle.calculateClaim(shareholder1, dividendId1, 0),
+            s1Claim1Amount
+        );
+        assertEq(
+            vaultSingle.calculateClaim(shareholder2, dividendId1, 0),
+            s2Claim1Amount
+        );
+        assertEq(
+            vaultSingle.calculateClaim(shareholder1, dividendId2, 0),
+            s1Claim2Amount
+        );
+        assertEq(
+            vaultSingle.calculateClaim(shareholder2, dividendId2, 0),
+            s2Claim2Amount
+        );
+
+        assertEq(
+            vaultSingle.calculateClaim(nonShareholder, dividendId1 + 1, 0),
+            0
+        );
+
         assertEq(distributionToken1.balanceOf(shareholder1), 0);
         assertEq(distributionToken1.balanceOf(shareholder2), 0);
-        vm.prank(shareholder1);
+        vm.startPrank(shareholder1);
         vaultSingle.claimDividend(dividendId1);
+        vm.expectRevert(bytes("Vault: Already claimed"));
+        vaultSingle.claimDividend(dividendId1);
+        vm.stopPrank();
         assertEq(distributionToken1.balanceOf(shareholder1), s1Claim1Amount);
         assertEq(distributionToken1.balanceOf(shareholder2), 0);
 
@@ -268,6 +300,12 @@ contract VaultTest is Test {
         );
         assertEq(distributionToken1.balanceOf(address(vaultSingle)), 0);
 
+        // Test calculateClaim()
+        assertEq(vaultSingle.calculateClaim(shareholder1, dividendId1, 0), 0);
+        assertEq(vaultSingle.calculateClaim(shareholder2, dividendId1, 0), 0);
+        assertEq(vaultSingle.calculateClaim(shareholder1, dividendId2, 0), 0);
+        assertEq(vaultSingle.calculateClaim(shareholder2, dividendId2, 0), 0);
+
         vm.expectRevert(bytes("Vault: Invalid dividend index"));
         vaultSingle.claimDividend(dividendId2 + 1);
     }
@@ -310,6 +348,61 @@ contract VaultTest is Test {
         distributionToken3.transfer(address(vaultMultiple), dt3Amount2);
         vm.warp(block.timestamp + 1);
         (, uint256 dividendId2) = vaultMultiple.createDividend();
+
+        // Test calculateClaim()
+        vm.expectRevert(bytes("Vault: Invalid token"));
+        vaultMultiple.calculateClaim(shareholder1, dividendId1, 3);
+
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId1, 0),
+            s1Claim1AmountToken1
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId1, 0),
+            s2Claim1AmountToken1
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId2, 0),
+            s1Claim2AmountToken1
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId2, 0),
+            s2Claim2AmountToken1
+        );
+
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId1, 1),
+            s1Claim1AmountToken2
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId1, 1),
+            s2Claim1AmountToken2
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId2, 1),
+            s1Claim2AmountToken2
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId2, 1),
+            s2Claim2AmountToken2
+        );
+
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId1, 2),
+            s1Claim1AmountToken3
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId1, 2),
+            s2Claim1AmountToken3
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder1, dividendId2, 2),
+            s1Claim2AmountToken3
+        );
+        assertEq(
+            vaultMultiple.calculateClaim(shareholder2, dividendId2, 2),
+            s2Claim2AmountToken3
+        );
 
         uint256 totalVaultAmount1 = dt1Amount1 + dt1Amount2;
         assertEq(
@@ -485,5 +578,21 @@ contract VaultTest is Test {
         assertEq(distributionToken1.balanceOf(address(vaultMultiple)), 0);
         assertEq(distributionToken2.balanceOf(address(vaultMultiple)), 0);
         assertEq(distributionToken3.balanceOf(address(vaultMultiple)), 0);
+
+        // Test calculateClaim()
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId1, 0), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId1, 0), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId2, 0), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId2, 0), 0);
+
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId1, 1), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId1, 1), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId2, 1), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId2, 1), 0);
+
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId1, 2), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId1, 2), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder1, dividendId2, 2), 0);
+        assertEq(vaultMultiple.calculateClaim(shareholder2, dividendId2, 2), 0);
     }
 }

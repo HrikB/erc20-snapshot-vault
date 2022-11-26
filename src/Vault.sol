@@ -34,7 +34,7 @@ contract Vault is IVault {
     modifier rateLimit() {
         require(
             block.timestamp - lastTime > _rateLimit,
-            "DividendCreator: Rate limit exceeded"
+            "Vault: Rate limit exceeded"
         );
         lastTime = block.timestamp;
         _;
