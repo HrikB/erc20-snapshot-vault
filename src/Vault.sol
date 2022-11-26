@@ -165,7 +165,7 @@ contract Vault is IVault {
         returns (uint256[] memory)
     {
         require(
-            _dividendId < dividendSnapshots.ids.length,
+            _dividendId > 0 && _dividendId <= dividendSnapshots.ids.length,
             "Vault: Invalid dividend index"
         );
         if (tokensClaimed[_dividendId][_shareholder])
@@ -173,7 +173,10 @@ contract Vault is IVault {
 
         uint256 index = dividendSnapshots.ids.findUpperBound(_dividendId);
 
-        uint256 snapshotBalance = claimToken.balanceOfAt(_shareholder, index);
+        uint256 snapshotBalance = claimToken.balanceOfAt(
+            _shareholder,
+            dividendSnapshots.checkpoints[index]
+        );
         // Potentially storing this value in Dividend struct could save gas
         uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
 

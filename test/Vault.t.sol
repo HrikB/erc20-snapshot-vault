@@ -9,7 +9,7 @@ import "../src/ClaimToken.sol";
 import "../src/Vault.sol";
 
 contract VaultTest is Test {
-    ClaimToken public ownershipToken;
+    ClaimToken public claimToken;
     ERC20PresetFixedSupply public distributionToken1;
     ERC20PresetFixedSupply public distributionToken2;
     ERC20PresetFixedSupply public distributionToken3;
@@ -30,10 +30,26 @@ contract VaultTest is Test {
     uint256 successAmount = DISTRIBUTION_AMOUNT;
     address successAddress;
 
+    // Amounts to transfer into vault contract
+    uint256 dt1Amount1 = 1000;
+    uint256 dt1Amount2 = 3500;
+    uint256 dt1Amount3 = 2250;
+    uint256 dt1Amount4 = 2000;
+
+    uint256 dt2Amount1 = 2000;
+    uint256 dt2Amount2 = 4000;
+    uint256 dt2Amount3 = 1500;
+    uint256 dt2Amount4 = 1000;
+
+    uint256 dt3Amount1 = 3000;
+    uint256 dt3Amount2 = 4250;
+    uint256 dt3Amount3 = 1250;
+    uint256 dt3Amount4 = 2500;
+
     function setUp() external {
         vm.startPrank(dividendCreator);
 
-        ownershipToken = new ClaimToken("Claim", "CLM");
+        claimToken = new ClaimToken("Claim", "CLM");
         distributionToken1 = new ERC20PresetFixedSupply(
             "Distribution1",
             "DSTR1",
@@ -56,22 +72,22 @@ contract VaultTest is Test {
         address[] memory addresses1 = new address[](1);
         addresses1[0] = address(distributionToken1);
 
-        vaultSingle = new Vault(ownershipToken, addresses1, 0);
+        vaultSingle = new Vault(claimToken, addresses1, 0);
 
         address[] memory addresses2 = new address[](3);
         addresses2[0] = address(distributionToken1);
         addresses2[1] = address(distributionToken2);
         addresses2[2] = address(distributionToken3);
 
-        vaultMultiple = new Vault(ownershipToken, addresses2, 0);
+        vaultMultiple = new Vault(claimToken, addresses2, 0);
 
-        ownershipToken.mint(shareholder1, SHAREHOLDER1_AMOUNT);
-        ownershipToken.mint(shareholder2, SHAREHOLDER2_AMOUNT);
+        claimToken.mint(shareholder1, SHAREHOLDER1_AMOUNT);
+        claimToken.mint(shareholder2, SHAREHOLDER2_AMOUNT);
 
-        ownershipToken.grantCheckpoint(address(vaultSingle));
+        claimToken.grantCheckpoint(address(vaultSingle));
         distributionToken1.approve(address(vaultSingle), 2**256 - 1);
 
-        ownershipToken.grantCheckpoint(address(vaultMultiple));
+        claimToken.grantCheckpoint(address(vaultMultiple));
         distributionToken1.approve(address(vaultMultiple), 2**256 - 1);
         distributionToken2.approve(address(vaultMultiple), 2**256 - 1);
         distributionToken3.approve(address(vaultMultiple), 2**256 - 1);
@@ -82,7 +98,7 @@ contract VaultTest is Test {
         vm.label(address(distributionToken1), "DISTRIBUTION_TOKEN1");
         vm.label(address(distributionToken2), "DISTRIBUTION_TOKEN2");
         vm.label(address(distributionToken3), "DISTRIBUTION_TOKEN3");
-        vm.label(address(ownershipToken), "OWNERSHIP_TOKEN");
+        vm.label(address(claimToken), "OWNERSHIP_TOKEN");
         vm.label(address(vaultSingle), "VAULT");
     }
 
@@ -90,29 +106,32 @@ contract VaultTest is Test {
         vm.expectRevert(bytes("Vault: id is 0"));
         vaultSingle.dividendAmountsAt(0);
 
-        distributionToken1.transfer(address(vaultSingle), 1000);
+        distributionToken1.transfer(address(vaultSingle), dt1Amount1);
         (, uint256 dividendIndex1) = vaultSingle.createDividend();
         assertEq(dividendIndex1, 1, "dividendIndex1");
-        assertEq(vaultSingle.dividendAmountsAt(dividendIndex1)[0], 1000);
+        assertEq(vaultSingle.dividendAmountsAt(dividendIndex1)[0], dt1Amount1);
 
         //By pass rate limit
         vm.warp(block.timestamp + 1);
 
-        distributionToken1.transfer(address(vaultSingle), 2000);
+        distributionToken1.transfer(address(vaultSingle), dt1Amount2);
         (, uint256 dividendIndex2) = vaultSingle.createDividend();
         assertEq(dividendIndex2, 2, "dividendIndex2");
-        assertEq(vaultSingle.dividendAmountsAt(dividendIndex2)[0], 2000);
+        assertEq(vaultSingle.dividendAmountsAt(dividendIndex2)[0], dt1Amount2);
 
         //By pass rate limit
         vm.warp(block.timestamp + 1);
 
-        distributionToken1.transfer(address(vaultSingle), 5000);
+        distributionToken1.transfer(address(vaultSingle), dt1Amount3);
         (, uint256 dividendIndex3) = vaultSingle.createDividend();
         assertEq(dividendIndex3, 3, "dividendIndex3");
-        assertEq(vaultSingle.dividendAmountsAt(dividendIndex3)[0], 5000);
+        assertEq(vaultSingle.dividendAmountsAt(dividendIndex3)[0], dt1Amount3);
 
-        distributionToken1.transfer(address(vaultSingle), 2500);
-        assertEq(vaultSingle.dividendAmountsAt(dividendIndex3 + 1)[0], 2500);
+        distributionToken1.transfer(address(vaultSingle), dt1Amount4);
+        assertEq(
+            vaultSingle.dividendAmountsAt(dividendIndex3 + 1)[0],
+            dt1Amount4
+        );
 
         vm.expectRevert(bytes("Vault: nonexistent id"));
         vaultSingle.dividendAmountsAt(dividendIndex3 + 2);
@@ -121,21 +140,6 @@ contract VaultTest is Test {
     function testCreateDividendMultiple() external {
         vm.expectRevert(bytes("Vault: id is 0"));
         vaultMultiple.dividendAmountsAt(0);
-
-        uint256 dt1Amount1 = 1000;
-        uint256 dt1Amount2 = 3500;
-        uint256 dt1Amount3 = 2250;
-        uint256 dt1Amount4 = 2000;
-
-        uint256 dt2Amount1 = 2000;
-        uint256 dt2Amount2 = 4000;
-        uint256 dt2Amount3 = 1500;
-        uint256 dt2Amount4 = 1000;
-
-        uint256 dt3Amount1 = 3000;
-        uint256 dt3Amount2 = 4250;
-        uint256 dt3Amount3 = 1250;
-        uint256 dt3Amount4 = 2500;
 
         distributionToken1.transfer(address(vaultMultiple), dt1Amount1);
         distributionToken2.transfer(address(vaultMultiple), dt2Amount1);
@@ -221,51 +225,295 @@ contract VaultTest is Test {
         vaultMultiple.dividendAmountsAt(dividendIndex3 + 2);
     }
 
-    function testDividendClaim() external {
-        // distributionToken1.transfer(address(vaultSingle), 1000);
-        // (, uint256 dividendIndex1) = vaultSingle.createDividend();
-        // distributionToken1.transfer(address(vaultSingle), 2000);
-        // (, uint256 dividendIndex2) = vaultSingle.createDividend();
-        // distributionToken1.transfer(address(vaultSingle), 5000);
-        // (, uint256 dividendIndex3) = vaultSingle.createDividend();
-        // distributionToken1.transfer(address(vaultSingle), 2500);
-        // vm.expectRevert(bytes("Vault: Invalid dividend index"));
-        // vaultSingle.claimDividend(dividendIndex3 + 1);
-        // (, , , uint256 amount, , ) = vaultSingle.dividends(dividendIndex);
-        // uint256 snapshotTotalSupply = ownershipToken.totalSupplyAt(
-        //     checkpointId
-        // );
-        // uint256 shareholder1Claim = (ownershipToken.balanceOfAt(
-        //     shareholder1,
-        //     checkpointId
-        // ) * amount) / snapshotTotalSupply;
-        // uint256 shareholder2Claim = (ownershipToken.balanceOfAt(
-        //     shareholder2,
-        //     checkpointId
-        // ) * amount) / snapshotTotalSupply;
-        // assertEq(distributionToken1.balanceOf(shareholder1), 0);
-        // assertEq(distributionToken1.balanceOf(shareholder2), 0);
-        // assertEq(distributionToken1.balanceOf(nonShareholder), 0);
-        // vm.stopPrank();
-        // vm.prank(shareholder1);
-        // vaultSingle.claimDividend(dividendIndex);
-        // assertEq(distributionToken1.balanceOf(shareholder1), shareholder1Claim);
-        // assertEq(
-        //     distributionToken1.balanceOf(address(vaultSingle)),
-        //     DISTRIBUTION_AMOUNT - shareholder1Claim
-        // );
-        // vm.prank(shareholder1);
-        // vm.expectRevert(bytes("Vault: Already claimed"));
-        // vaultSingle.claimDividend(dividendIndex);
-        // vm.prank(nonShareholder);
-        // vaultSingle.claimDividend(dividendIndex);
-        // assertEq(distributionToken1.balanceOf(nonShareholder), 0);
-        // vm.prank(shareholder2);
-        // vaultSingle.claimDividend(dividendIndex);
-        // assertEq(distributionToken1.balanceOf(shareholder2), shareholder2Claim);
-        // assertEq(
-        //     distributionToken1.balanceOf(address(vaultSingle)),
-        //     DISTRIBUTION_AMOUNT - shareholder1Claim - shareholder2Claim
-        // );
+    function testClaimDividend() external {
+        distributionToken1.transfer(address(vaultMultiple), dt1Amount1);
+        (, uint256 dividendIndex1) = vaultMultiple.createDividend();
+        distributionToken1.transfer(address(vaultMultiple), dt1Amount2);
+        vm.warp(block.timestamp + 1);
+        (, uint256 dividendIndex2) = vaultSingle.createDividend();
+
+        uint256 totalVaultAmount1 = dt1Amount1 + dt1Amount2;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultSingle)),
+            totalVaultAmount1
+        );
+
+        vm.stopPrank();
+        uint256 s1Claim1Amount = (SHAREHOLDER1_AMOUNT * dt1Amount1) /
+            DISTRIBUTION_AMOUNT;
+        uint256 s2Claim1Amount = (SHAREHOLDER2_AMOUNT * dt1Amount1) /
+            DISTRIBUTION_AMOUNT;
+        uint256 s1Claim2Amount = (SHAREHOLDER1_AMOUNT * dt1Amount2) /
+            DISTRIBUTION_AMOUNT;
+        uint256 s2Claim2Amount = (SHAREHOLDER2_AMOUNT * dt1Amount2) /
+            DISTRIBUTION_AMOUNT;
+
+        assertEq(distributionToken1.balanceOf(shareholder1), 0);
+        assertEq(distributionToken1.balanceOf(shareholder2), 0);
+        vm.prank(shareholder1);
+        vaultSingle.claimDividend(dividendIndex1);
+        assertEq(distributionToken1.balanceOf(shareholder1), s1Claim1Amount);
+        assertEq(distributionToken1.balanceOf(shareholder2), 0);
+
+        totalVaultAmount1 -= s1Claim1Amount;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultSingle)),
+            totalVaultAmount1
+        );
+
+        vm.prank(shareholder2);
+        vaultSingle.claimDividend(dividendIndex2);
+        assertEq(distributionToken1.balanceOf(shareholder1), s1Claim1Amount);
+        assertEq(distributionToken1.balanceOf(shareholder2), s2Claim2Amount);
+
+        totalVaultAmount1 -= s2Claim2Amount;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultSingle)),
+            totalVaultAmount1
+        );
+
+        vm.prank(shareholder1);
+        vaultSingle.claimDividend(dividendIndex2);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1Amount + s1Claim2Amount
+        );
+        assertEq(distributionToken1.balanceOf(shareholder2), s2Claim2Amount);
+
+        totalVaultAmount1 -= s1Claim2Amount;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultSingle)),
+            totalVaultAmount1
+        );
+
+        vm.prank(shareholder2);
+        vaultSingle.claimDividend(dividendIndex1);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1Amount + s1Claim2Amount
+        );
+        assertEq(
+            distributionToken1.balanceOf(shareholder2),
+            s2Claim1Amount + s2Claim2Amount
+        );
+        assertEq(distributionToken1.balanceOf(address(vaultSingle)), 0);
+
+        vm.expectRevert(bytes("Vault: Invalid dividend index"));
+        vaultSingle.claimDividend(dividendIndex2 + 1);
+    }
+
+    // Stack too deep
+    uint256 s1Claim1AmountToken1 =
+        (SHAREHOLDER1_AMOUNT * dt1Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim1AmountToken1 =
+        (SHAREHOLDER2_AMOUNT * dt1Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s1Claim2AmountToken1 =
+        (SHAREHOLDER1_AMOUNT * dt1Amount2) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim2AmountToken1 =
+        (SHAREHOLDER2_AMOUNT * dt1Amount2) / DISTRIBUTION_AMOUNT;
+
+    uint256 s1Claim1AmountToken2 =
+        (SHAREHOLDER1_AMOUNT * dt2Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim1AmountToken2 =
+        (SHAREHOLDER2_AMOUNT * dt2Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s1Claim2AmountToken2 =
+        (SHAREHOLDER1_AMOUNT * dt2Amount2) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim2AmountToken2 =
+        (SHAREHOLDER2_AMOUNT * dt2Amount2) / DISTRIBUTION_AMOUNT;
+
+    uint256 s1Claim1AmountToken3 =
+        (SHAREHOLDER1_AMOUNT * dt3Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim1AmountToken3 =
+        (SHAREHOLDER2_AMOUNT * dt3Amount1) / DISTRIBUTION_AMOUNT;
+    uint256 s1Claim2AmountToken3 =
+        (SHAREHOLDER1_AMOUNT * dt3Amount2) / DISTRIBUTION_AMOUNT;
+    uint256 s2Claim2AmountToken3 =
+        (SHAREHOLDER2_AMOUNT * dt3Amount2) / DISTRIBUTION_AMOUNT;
+
+    function testClaimDividendMultiple() external {
+        distributionToken1.transfer(address(vaultMultiple), dt1Amount1);
+        distributionToken2.transfer(address(vaultMultiple), dt2Amount1);
+        distributionToken3.transfer(address(vaultMultiple), dt3Amount1);
+        (, uint256 dividendIndex1) = vaultMultiple.createDividend();
+        distributionToken1.transfer(address(vaultMultiple), dt1Amount2);
+        distributionToken2.transfer(address(vaultMultiple), dt2Amount2);
+        distributionToken3.transfer(address(vaultMultiple), dt3Amount2);
+        vm.warp(block.timestamp + 1);
+        (, uint256 dividendIndex2) = vaultMultiple.createDividend();
+
+        uint256 totalVaultAmount1 = dt1Amount1 + dt1Amount2;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultMultiple)),
+            totalVaultAmount1
+        );
+        uint256 totalVaultAmount2 = dt2Amount1 + dt2Amount2;
+        assertEq(
+            distributionToken2.balanceOf(address(vaultMultiple)),
+            totalVaultAmount2
+        );
+        uint256 totalVaultAmount3 = dt3Amount1 + dt3Amount2;
+        assertEq(
+            distributionToken3.balanceOf(address(vaultMultiple)),
+            totalVaultAmount3
+        );
+
+        vm.stopPrank();
+
+        assertEq(distributionToken1.balanceOf(shareholder1), 0);
+        assertEq(distributionToken1.balanceOf(shareholder2), 0);
+        assertEq(distributionToken2.balanceOf(shareholder1), 0);
+        assertEq(distributionToken2.balanceOf(shareholder2), 0);
+        assertEq(distributionToken3.balanceOf(shareholder1), 0);
+        assertEq(distributionToken3.balanceOf(shareholder2), 0);
+        vm.prank(shareholder1);
+        vaultMultiple.claimDividend(dividendIndex1);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim1AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim1AmountToken3
+        );
+        assertEq(distributionToken1.balanceOf(shareholder2), 0);
+        assertEq(distributionToken2.balanceOf(shareholder2), 0);
+        assertEq(distributionToken3.balanceOf(shareholder2), 0);
+
+        totalVaultAmount1 -= s1Claim1AmountToken1;
+        totalVaultAmount2 -= s1Claim1AmountToken2;
+        totalVaultAmount3 -= s1Claim1AmountToken3;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultMultiple)),
+            totalVaultAmount1
+        );
+        assertEq(
+            distributionToken2.balanceOf(address(vaultMultiple)),
+            totalVaultAmount2
+        );
+        assertEq(
+            distributionToken3.balanceOf(address(vaultMultiple)),
+            totalVaultAmount3
+        );
+
+        vm.prank(shareholder2);
+        vaultMultiple.claimDividend(dividendIndex2);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim1AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim1AmountToken3
+        );
+        assertEq(
+            distributionToken1.balanceOf(shareholder2),
+            s2Claim1AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim2AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim2AmountToken3
+        );
+
+        totalVaultAmount1 -= s2Claim1AmountToken1;
+        totalVaultAmount2 -= s2Claim1AmountToken2;
+        totalVaultAmount3 -= s2Claim1AmountToken3;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultMultiple)),
+            totalVaultAmount1
+        );
+        assertEq(
+            distributionToken2.balanceOf(address(vaultMultiple)),
+            totalVaultAmount2
+        );
+        assertEq(
+            distributionToken3.balanceOf(address(vaultMultiple)),
+            totalVaultAmount3
+        );
+
+        vm.prank(shareholder1);
+        vaultMultiple.claimDividend(dividendIndex2);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1AmountToken1 + s1Claim2AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim1AmountToken2 + s1Claim2AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim1AmountToken3 + s1Claim2AmountToken3
+        );
+        assertEq(
+            distributionToken1.balanceOf(shareholder2),
+            s2Claim1AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim2AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim2AmountToken3
+        );
+
+        totalVaultAmount1 -= s1Claim2AmountToken1;
+        totalVaultAmount2 -= s1Claim2AmountToken2;
+        totalVaultAmount3 -= s1Claim2AmountToken3;
+        assertEq(
+            distributionToken1.balanceOf(address(vaultMultiple)),
+            totalVaultAmount1
+        );
+        assertEq(
+            distributionToken2.balanceOf(address(vaultMultiple)),
+            totalVaultAmount2
+        );
+        assertEq(
+            distributionToken3.balanceOf(address(vaultMultiple)),
+            totalVaultAmount3
+        );
+
+        vm.prank(shareholder2);
+        vaultMultiple.claimDividend(dividendIndex2);
+        assertEq(
+            distributionToken1.balanceOf(shareholder1),
+            s1Claim1AmountToken1 + s1Claim2AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim1AmountToken2 + s1Claim2AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim1AmountToken3 + s1Claim2AmountToken3
+        );
+        assertEq(
+            distributionToken1.balanceOf(shareholder2),
+            s2Claim1AmountToken1 + s2Claim2AmountToken1
+        );
+        assertEq(
+            distributionToken2.balanceOf(shareholder1),
+            s1Claim2AmountToken2
+        );
+        assertEq(
+            distributionToken3.balanceOf(shareholder1),
+            s1Claim2AmountToken3
+        );
+
+        assertEq(distributionToken1.balanceOf(address(vaultMultiple)), 0);
+        assertEq(distributionToken2.balanceOf(address(vaultMultiple)), 0);
+        assertEq(distributionToken3.balanceOf(address(vaultMultiple)), 0);
     }
 }
