@@ -11,15 +11,18 @@ interface IVault {
 
     function createDividend() external returns (uint256, uint256);
 
+    function getCurrentDividendId() external view returns (uint256);
+
     function claimDividend(uint256 _dividendId) external;
 
-    function dividendAmountsAt(uint256 _dividendId)
-        external
-        view
-        returns (uint256[] memory);
+    function calculateClaim(
+        address _shareholder,
+        uint256 _dividendId,
+        uint256 tokenIndex
+    ) external view returns (uint256);
 
-    function calculateDividend(uint256 _dividendId, address _shareholder)
+    function dividendAmountAt(uint256 _dividendId, uint256 tokenIndex)
         external
         view
-        returns (uint256[] memory);
+        returns (uint256);
 }
