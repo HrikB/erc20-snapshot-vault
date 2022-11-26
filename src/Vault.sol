@@ -138,7 +138,7 @@ contract Vault is IVault {
             _shareholder,
             dividendSnapshots.checkpoints[index]
         );
-        // Potentially storing this value in Dividend struct could save gas
+
         uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
         return
             _calculateClaimHelper(
