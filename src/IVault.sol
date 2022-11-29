@@ -2,6 +2,10 @@
 pragma solidity ^0.8.13;
 
 interface IVault {
+    event DividendCreate(
+        uint256 indexed dividendId,
+        uint256 indexed checkpointId
+    );
     event ShareholderClaim(
         address indexed shareholder,
         uint256 indexed dividendId,
