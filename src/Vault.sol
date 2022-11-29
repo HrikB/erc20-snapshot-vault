@@ -21,7 +21,7 @@ contract Vault is IVault {
     ClaimToken claimToken;
     address[] internal distributionTokens;
 
-    DividendSnapshots dividendSnapshots;
+    DividendSnapshots[] dividendSnapshots;
     uint256[] public totalDividendsClaimed;
     Counters.Counter public _currentDividendId;
 
@@ -48,7 +48,7 @@ contract Vault is IVault {
         claimToken = _claimToken;
         distributionTokens = _distributionTokens;
 
-        dividendSnapshots.values = new uint256[][](_distributionTokens.length);
+        // dividendSnapshots.values = new uint256[][](_distributionTokens.length);
         totalDividendsClaimed = new uint256[](_distributionTokens.length);
 
         _rateLimit = rateLimit_;
@@ -61,12 +61,17 @@ contract Vault is IVault {
 
         uint256 tokenCheckpointId = claimToken.createCheckpoint();
 
-        dividendSnapshots.checkpoints.push(tokenCheckpointId);
+        dividendSnapshots.push(
+            DividendSnapshots(
+                tokenCheckpointId,
+                new uint256[](distributionTokens.length)
+            )
+        );
+
         for (uint256 i = 0; i < distributionTokens.length; i++) {
-            dividendSnapshots.values[i].push(
+            dividendSnapshots[dividendSnapshots.length - 1].values[i] =
                 totalDividendsClaimed[i] +
-                    ERC20(distributionTokens[i]).balanceOf(address(this))
-            );
+                ERC20(distributionTokens[i]).balanceOf(address(this));
         }
 
         emit DividendCreate(currentId, tokenCheckpointId);
@@ -88,15 +93,14 @@ contract Vault is IVault {
 
     function _payDividend(address _shareholder, uint256 _dividendId) internal {
         require(
-            _dividendId > 0 &&
-                _dividendId <= dividendSnapshots.checkpoints.length,
+            _dividendId > 0 && _dividendId <= dividendSnapshots.length,
             "Vault: Invalid dividend index"
         );
         uint256 index = _dividendId - 1;
 
         uint256 snapshotBalance = claimToken.balanceOfAt(
             _shareholder,
-            dividendSnapshots.checkpoints[index]
+            dividendSnapshots[index].claimCheckpoint
         );
         uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
 
@@ -130,8 +134,7 @@ contract Vault is IVault {
         uint256 tokenIndex
     ) external view returns (uint256) {
         require(
-            _dividendId > 0 &&
-                _dividendId <= dividendSnapshots.checkpoints.length,
+            _dividendId > 0 && _dividendId <= dividendSnapshots.length,
             "Vault: Invalid dividend index"
         );
         if (tokensClaimed[_dividendId][_shareholder]) return 0;
@@ -140,7 +143,7 @@ contract Vault is IVault {
 
         uint256 snapshotBalance = claimToken.balanceOfAt(
             _shareholder,
-            dividendSnapshots.checkpoints[index]
+            dividendSnapshots[index].claimCheckpoint
         );
 
         uint256 snapshotTotalSupply = claimToken.totalSupplyAt(_dividendId);
@@ -199,8 +202,8 @@ contract Vault is IVault {
 
         uint256 index = _dividendId - 1;
 
-        if (index == dividendSnapshots.checkpoints.length) return (false, 0);
+        if (index == dividendSnapshots.length) return (false, 0);
 
-        return (true, dividendSnapshots.values[tokenIndex][index]);
+        return (true, dividendSnapshots[index].values[tokenIndex]);
     }
 }
