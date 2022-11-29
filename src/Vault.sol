@@ -3,10 +3,12 @@ pragma solidity ^0.8.13;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
+import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 
 import {ClaimToken} from "./ClaimToken.sol";
 import {IVault} from "./IVault.sol";
 import {DividendSnapshots} from "./VaultLib.sol";
+import {RateLimit} from "./RateLimit.sol";
 
 import "forge-std/console.sol";
 
@@ -24,6 +26,7 @@ import "forge-std/console.sol";
  */
 contract Vault is IVault {
     using Counters for Counters.Counter;
+    using StorageSlot for bytes32;
 
     ClaimToken claimToken;
     address[] internal distributionTokens;
@@ -32,18 +35,17 @@ contract Vault is IVault {
     uint256[] public totalDividendsClaimed;
     Counters.Counter public _currentDividendId;
 
-    uint256 immutable _rateLimit;
-    uint256 lastTime;
+    bytes32 internal constant RATE_LIMIT_SLOT = keccak256("RATE_LIMIT_SLOT");
+    bytes32 internal constant LAST_TIME_SLOT = keccak256("LAST_TIME_SLOT");
 
     // DividendId => Shareholder address => claim bool
     mapping(uint256 => mapping(address => bool)) public tokensClaimed;
 
     modifier rateLimit() {
-        require(
-            block.timestamp - lastTime > _rateLimit,
-            "Vault: Rate limit exceeded"
+        RateLimit.rateLimit(
+            LAST_TIME_SLOT.getUint256Slot(),
+            RATE_LIMIT_SLOT.getUint256Slot()
         );
-        lastTime = block.timestamp;
         _;
     }
 
@@ -57,7 +59,7 @@ contract Vault is IVault {
 
         totalDividendsClaimed = new uint256[](_distributionTokens.length);
 
-        _rateLimit = rateLimit_;
+        RATE_LIMIT_SLOT.getUint256Slot().value = rateLimit_;
     }
 
     /**
@@ -158,7 +160,7 @@ contract Vault is IVault {
      * for a shareholder
      * @param _shareholder The address of the shareholder
      * @param _dividendId The index of the dividend
-     * @param _tokenIndex The index of the token
+     * @param tokenIndex The index of the token
      */
     function calculateClaim(
         address _shareholder,
@@ -190,9 +192,9 @@ contract Vault is IVault {
 
     /**
      * @dev Helper function to calculate the claim amount
-     * @param _snapshotBalance Shareholder's balance of the `claimToken` at the
+     * @param snapshotBalance Shareholder's balance of the `claimToken` at the
      * checkpoint
-     * @param _snapshotTotalSupply The total supply of the `claimToken` at the
+     * @param snapshotTotalSupply The total supply of the `claimToken` at the
      * checkpoint
      * @param _dividendId The dividend id
      * @param tokenIndex The index of the token in the `distributionTokens`

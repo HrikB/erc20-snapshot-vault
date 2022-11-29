@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
+
 library RateLimit {
-    modifier rateLimit(uint256 lastTime, uint256 _rateLimit) {
+    function rateLimit(
+        StorageSlot.Uint256Slot storage lastTime,
+        StorageSlot.Uint256Slot storage _rateLimit
+    ) public {
         require(
-            block.timestamp - lastTime > _rateLimit,
+            block.timestamp - lastTime.value > _rateLimit.value,
             "Vault: Rate limit exceeded"
         );
-        lastTime = block.timestamp;
-        _;
+        lastTime.value = block.timestamp;
     }
 }
