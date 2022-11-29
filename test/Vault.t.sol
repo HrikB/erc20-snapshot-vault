@@ -3,7 +3,6 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 import {ERC20PresetFixedSupply} from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetFixedSupply.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../src/ClaimToken.sol";
 import "../src/Vault.sol";

@@ -32,7 +32,7 @@ contract ClaimToken is ERC20Snapshot, AccessControl, IClaimToken {
         return _snapshot();
     }
 
-    function getCurrentCheckpointId() external returns (uint256) {
+    function getCurrentCheckpointId() external view returns (uint256) {
         return _getCurrentSnapshotId();
     }
 
