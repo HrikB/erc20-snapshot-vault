@@ -3,7 +3,6 @@ pragma solidity ^0.8.13;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
-import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 import {ClaimToken} from "./ClaimToken.sol";
 import {IVault} from "./IVault.sol";
@@ -12,11 +11,19 @@ import {DividendSnapshots} from "./VaultLib.sol";
 import "forge-std/console.sol";
 
 /**
+ * @title Vault
+ * A Vault contract that can be configured to accept any set of ERC20 tokens whose
+ * balances can than be distributed according to the holdings of a specificied
+ * `ClaimToken`. The `ClaimToken` is a ERC20Snapshot token that can be used to
+ * create checkpoints of the token balances at any point in time. The `Vault`
+ * contract can then be used to distribute the ERC20 token according to the
+ * balances of the `ClaimToken` at a specific checkpoint.
  *
+ * This is a permissionless contract whose dividend creation process can be
+ * triggered by anyone. In order to prevent spamming, a rate limit is enforced.
  */
 contract Vault is IVault {
     using Counters for Counters.Counter;
-    using EnumerableMap for EnumerableMap.UintToAddressMap;
 
     ClaimToken claimToken;
     address[] internal distributionTokens;
@@ -28,7 +35,7 @@ contract Vault is IVault {
     uint256 immutable _rateLimit;
     uint256 lastTime;
 
-    // CheckpointId => Shareholder address => claim bool
+    // DividendId => Shareholder address => claim bool
     mapping(uint256 => mapping(address => bool)) public tokensClaimed;
 
     modifier rateLimit() {
@@ -48,12 +55,15 @@ contract Vault is IVault {
         claimToken = _claimToken;
         distributionTokens = _distributionTokens;
 
-        // dividendSnapshots.values = new uint256[][](_distributionTokens.length);
         totalDividendsClaimed = new uint256[](_distributionTokens.length);
 
         _rateLimit = rateLimit_;
     }
 
+    /**
+     * @dev Creates a dividend that can claimed by shareholders. This function
+     * can be called by anyone but is rate limited to prevent spam.
+     */
     function createDividend() external rateLimit returns (uint256, uint256) {
         _currentDividendId.increment();
 
@@ -79,10 +89,17 @@ contract Vault is IVault {
         return (tokenCheckpointId, currentId);
     }
 
+    /**
+     * @dev Returns the current dividend id
+     */
     function getCurrentDividendId() public view returns (uint256) {
         return _currentDividendId.current();
     }
 
+    /**
+     * @dev Allows a shareholder to claim their tokens
+     * @param _dividendId The id of the dividend to claim
+     */
     function claimDividend(uint256 _dividendId) external {
         require(
             !tokensClaimed[_dividendId][msg.sender],
@@ -91,6 +108,14 @@ contract Vault is IVault {
         _payDividend(msg.sender, _dividendId);
     }
 
+    /**
+     * @dev Calculates the amount of dividends a shareholder is entitled to and
+     * transfers it to them. If the shareholder has already claimed their
+     * dividend, this function will revert. Non-shareholders will be transferred
+     * 0 tokens. Their transactions will NOT revert.
+     * @param _shareholder The address of the shareholder to pay.
+     * @param _dividendId The id of the dividend to pay.
+     */
     function _payDividend(address _shareholder, uint256 _dividendId) internal {
         require(
             _dividendId > 0 && _dividendId <= dividendSnapshots.length,
@@ -128,6 +153,13 @@ contract Vault is IVault {
         }
     }
 
+    /**
+     * @dev Public function to calculate the claim amount of one of the tokens
+     * for a shareholder
+     * @param _shareholder The address of the shareholder
+     * @param _dividendId The index of the dividend
+     * @param _tokenIndex The index of the token
+     */
     function calculateClaim(
         address _shareholder,
         uint256 _dividendId,
@@ -156,6 +188,16 @@ contract Vault is IVault {
             );
     }
 
+    /**
+     * @dev Helper function to calculate the claim amount
+     * @param _snapshotBalance Shareholder's balance of the `claimToken` at the
+     * checkpoint
+     * @param _snapshotTotalSupply The total supply of the `claimToken` at the
+     * checkpoint
+     * @param _dividendId The dividend id
+     * @param tokenIndex The index of the token in the `distributionTokens`
+     * array
+     */
     function _calculateClaimHelper(
         uint256 snapshotBalance,
         uint256 snapshotTotalSupply,
@@ -167,6 +209,17 @@ contract Vault is IVault {
             snapshotTotalSupply;
     }
 
+    /**
+     * @dev Returns the total amount of dividends allocated for a given
+     * dividendId and tokenIndex. This function performs the required
+     * calculations to determine the allocation amount. To find the amount at
+     * given `dividendId` you have to find (the total amount at the provided
+     * `dividendId` - the total amount at the previous `dividendId`). If the
+     * function is called on the current `dividendId` (not yet snapshotted) then
+     * the calculation is done on how much has been allocated for it so far.
+     * @param _dividendId associated dividendId
+     * @param tokenIndex The index of the token
+     */
     function dividendAmountAt(uint256 _dividendId, uint256 tokenIndex)
         public
         view
@@ -188,6 +241,16 @@ contract Vault is IVault {
             prevValue;
     }
 
+    /**
+     * @dev Returns the value associated with a given dividendId and tokenIndex.
+     * Values within one `dividendSnapshots` represent the different allocation
+     * amounts for each token for that dividend. Values across multuple
+     * `dividendSnapshots` represent the history of the total amount of
+     * dividends allocated for a given token with the assumption there were no
+     * claims ever made. This function simply reads the state of the contract.
+     * @param _dividendId associated dividendId
+     * @param tokenIndex The index of the token
+     */
     function _valueAt(uint256 _dividendId, uint256 tokenIndex)
         internal
         view
