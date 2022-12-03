@@ -4,20 +4,19 @@ This is the ERC-20 compatible token that represents a holder's claim to a share 
 
 # `Vault.sol`
 
-This is the contract in which the distributions are stored. It also stores interally an address of a deployed `ClaimToken.sol` whose proportional balances of the token supply will represent the proportional right to claim distributions from the Vault.
+This is the contract in which the distributions are stored. It also stores internally an address of a deployed `ClaimToken.sol` whose proportional balances of the token supply will represent the proportional right to claim distributions from the Vault. The vault supports distribution of multiple tokens that must be designated at *deploy-time*. This is unalterable once the contract has been launched. 
 
 ## Dividend Creation
 
-When a dividend is created a in the Vault, the full distribution is transferred into the contract. Also, a snapshot within the `ClaimToken.sol` is created and mapped to recent dividend.
+When a dividend is created in the Vault (by calling `createDividend()`), a snapshot of the `Vault`'s token supplies (designated at contract deployment) and the `ClaimToken`'s balances are taken. With this data, each shareholder's rightful share can be calculated when said shareholder goes to make a claim.
 
 ## Dividend Claiming
 
-Dividends will need to be claimed by the appropriate shareholder. If someone is not a shareholder, their transaction won't be rejected, but rather it will simply send an amount of 0 of the distribution token to `msg.sender`. The creator of the dividend can create an `expiry` period after which shareholders attempting to claim that specific dividend will be denied.
+Dividends will need to be claimed by the appropriate shareholder. If someone is not a shareholder, their transaction won't be reverted, but rather it will simply send an amount of 0 tokens of the distribution token(s) to `msg.sender`. Shareholders must claim their rightful share for each dividend individually. Each dividend's full value will be distributed at once. There is no option to make a partial claim of one dividend.
 
-## Dividend Reclaiming
+## Permissions
 
-This is only for expired dividends. Once a dividend has expired, `DIVIDEND_ROLE` has the ability to reclaim whatever is left of the distribution. Enabling expiry/reclaiming into the spec allows for flexibility around unclaimed funds. It is highly likely that not all of the funds from the distribution will be claimed by the appropriate shareholders. It is futile not to unlock that liquidity to `DIVIDEND_ROLE`.
+The Vault has no special privledging. However, the `createDividend()` function is rate-limited to prevent spamming as OpenZeppelin's `ERC20Snapshot` does incur an overhead as snapshot total grows (although its growth is logarthmic).
 
-# Permissions
-
-One address with `DIVIDEND_ROLE` has the permission to create a dividend and reclaim dividend after the expiry. Either an EOA can call the `createDividend()` function or it can be called by a contract.
+# `RateLimiter.sol`
+A general-purpose library that can be used create a rate limiter. It takes two storage pointers (supported by OpenZeppelin's `StorageSlot.sol`) so that it can read/write to the consuming contract's storage.
