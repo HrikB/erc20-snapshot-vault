@@ -39,11 +39,11 @@ contract Vault is IVault {
     // DividendId => Shareholder address => claim bool
     mapping(uint256 => mapping(address => bool)) public tokensClaimed;
 
-    modifier rateLimit() {
-        RateLimit.rateLimit(
-            LAST_TIME_SLOT.getUint256Slot(),
-            RATE_LIMIT_SLOT.getUint256Slot()
-        );
+    modifier rateLimit(
+        StorageSlot.Uint256Slot storage lastTimeSlot,
+        StorageSlot.Uint256Slot storage rateLimitSlot
+    ) {
+        RateLimit.rateLimit(lastTimeSlot, rateLimitSlot);
         _;
     }
 
@@ -64,7 +64,14 @@ contract Vault is IVault {
      * @dev Creates a dividend that can claimed by shareholders. This function
      * can be called by anyone but is rate limited to prevent spam.
      */
-    function createDividend() external rateLimit returns (uint256, uint256) {
+    function createDividend()
+        external
+        rateLimit(
+            LAST_TIME_SLOT.getUint256Slot(),
+            RATE_LIMIT_SLOT.getUint256Slot()
+        )
+        returns (uint256, uint256)
+    {
         _currentDividendId.increment();
 
         uint256 currentId = getCurrentDividendId();
