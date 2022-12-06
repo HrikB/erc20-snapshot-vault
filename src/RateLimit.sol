@@ -7,7 +7,7 @@ library RateLimit {
     function rateLimit(
         StorageSlot.Uint256Slot storage lastTime,
         StorageSlot.Uint256Slot storage _rateLimit
-    ) public {
+    ) internal {
         require(
             block.timestamp - lastTime.value > _rateLimit.value,
             "Vault: Rate limit exceeded"

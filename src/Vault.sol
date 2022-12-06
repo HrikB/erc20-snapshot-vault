@@ -10,8 +10,6 @@ import {IVault} from "./IVault.sol";
 import {DividendSnapshots} from "./VaultLib.sol";
 import {RateLimit} from "./RateLimit.sol";
 
-import "forge-std/console.sol";
-
 /**
  * @title Vault
  * A Vault contract that can be configured to accept any set of ERC20 tokens whose
